@@ -1,25 +1,54 @@
 //src/transport/base.rs
 use actix_web::{web, HttpRequest, HttpResponse};
-use reqwest::{RequestBuilder,Response};
+use reqwest::blocking::{RequestBuilder, Response};
+use async_trait::async_trait;
 
-
-
-pub trait Web {
-    fn get_payload_w(req: HttpRequest, body: web::Bytes) -> Option<Vec<u8>>;
-    fn set_payload_w<T: AsRef<[u8]>>(payload: T) -> Option<HttpResponse>;
+pub trait TransportTrait{
+    // 此处定义三个角色x,y,z
+    // x 该c2系统的实际服务端
+    // y 与该c2系统的实际服务端操控和管理的红队客户端
+    // z 受感染主机端
+    // 此处定义两个过程a,b
+    // a 请求到达服务端的过程
+    // b 请求对应的响应返回过程
+    const SUPPORT: &'static str; // 按谁发出的请求分，如“zy”,"yz","zy:yz"
+    const PROCESS: &'static str; // 如“a”，“b”
+    type ExtractIn;
+    type InjectIn;
+    type InjectOut;
+    fn extract(input: Self::ExtractIn) -> Option<Vec<u8>>;
+    fn inject(input: Self::InjectIn) -> Option<Self::InjectOut>;
 }
+pub enum TransportHttpType{
+    // b_set
+    Payload(Vec<u8>),
+    HttpResponse(HttpResponse),
+    // b_get
+    RequestBuilder(RequestBuilder),
+    // Payload(Vec<u8>),
 
-pub trait Client {
-    async fn get_payload_c(rep: Response) -> Option<Vec<u8>>;
-    fn set_payload_c<T: AsRef<[u8]>>(payload: T,url_base: &str,url_path: &str) -> Option<RequestBuilder>;
+    // a_get
+    HttpRequest((HttpRequest,web::Bytes)),
+    // Payload(Vec<u8>),
+    // a_set
+    Request((Vec<u8>,String,String)),
+    // RequestBuilder(RequestBuilder),
 }
-
-
-pub trait Transport: Web + Client {
-    const URL_PATH: &'static str;
-
-    // const IS_REVERSE: bool;     // 此处定义从受感染主机到c2服务器为正向
-
+// 在发送的请求里面藏载荷
+#[async_trait]
+pub trait TransportHttpA: TransportTrait<
+    ExtractIn = TransportHttpType,
+    InjectIn = TransportHttpType,
+    InjectOut = TransportHttpType
+> {
+    const PROCESS: &'static str = "a";
 }
-
-
+// 在收到的响应里面藏载荷
+#[async_trait]
+pub trait TransportHttpB: TransportTrait<
+    ExtractIn = TransportHttpType,
+    InjectIn = TransportHttpType,
+    InjectOut = TransportHttpType
+> {
+    const PROCESS: &'static str = "b";
+}

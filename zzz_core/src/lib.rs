@@ -1,8 +1,8 @@
-mod model;
-mod utils;
-mod binary_data_process;
-mod shell;
-mod transport;
+pub mod model;
+pub mod utils;
+pub mod binary_data_process;
+pub mod shell;
+pub mod transport;
 
 pub fn add(left: u64, right: u64) -> u64 {
     left + right

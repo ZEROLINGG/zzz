@@ -1,3 +1,4 @@
+use std::io::{Write};
 use libc::exit;
 
 mod model;
@@ -9,29 +10,37 @@ mod shell;
 
 fn main() {
     use crate::shell::full_shell::Shell;
-    let mut shell = Shell::new("pwsh").expect("create shell failed");
+    let mut shell = Shell::new("sh").expect("create shell failed");
     use std::io;
     use colored::*;
 
 
     shell.on_output(move |line| {
-        println!("{}", format!("\r>{line}").green());
+        println!("\r{}", format!("{line}").green());
     });
 
     shell.on_error(move |line| {
-        eprintln!("{}", format!(">{line}").red());
+        eprintln!("\r{}", format!("{line}").red());
     });
 
     shell.on_exit(move |code| {
-        println!("{}", format!("code = {code}").blue());
+        println!("{}", format!("[exit] code = {code}").blue());
         // unsafe { exit(code); }
     });
 
-    loop {
+    fn read_line() -> String{
+        io::stdout().flush().unwrap();
         let mut input = String::new();
         io::stdin()
             .read_line(&mut input)
             .expect("failed to read line");
+        input
+    }
+
+    loop {
+
+
+        let input = read_line();
 
         match shell.send(&format!("{input}")) {
             Ok(_) => (),

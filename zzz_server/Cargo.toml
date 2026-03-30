@@ -1,7 +1,6 @@
 [package]
-name = "zzz"
+name = "zzz_server"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-zzz_core = { path = "./zzz_core" }

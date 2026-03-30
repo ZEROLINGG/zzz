@@ -1,3 +1,6 @@
+
+use zzz_core::shell::exec;
+
 fn main() {
-    println!("Hello, world!");
+    println!("{:?}", exec("pwd","sh",None,None));
 }
