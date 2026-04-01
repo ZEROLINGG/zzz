@@ -43,28 +43,18 @@ impl TransportTrait for FakeEncryptedLogin {
     fn inject(input: Self::InjectIn) -> Option<Self::InjectOut> {
         if let TransportHttpType::Request((payload, urlpath, urlbase)) = input {
             let encoded_payload = Base64::encode(payload);
-
-            
             let userid = Uuid::new_v4().to_string();
-
-            
             let remember_me = rand::random::<bool>();
-
-            
             let timestamp = SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .unwrap_or_default()
                 .as_millis();
-
-            
             let login_body = json!({
                 "userid": userid,
                 "pwd": encoded_payload,          
                 "remember_me": remember_me,
                 "version": "2.4.1",
                 "timestamp": timestamp,
-
-                
                 "device_id": Uuid::new_v4().to_string(),
                 "os": "Windows 10",
                 "os_version": "10.0.19045",
@@ -74,7 +64,6 @@ impl TransportTrait for FakeEncryptedLogin {
                 "app_id": "com.example.enterprise"
             });
 
-            
             let full_url = if urlbase.ends_with('/') && urlpath.starts_with('/') {
                 format!("{}{}", urlbase.trim_end_matches('/'), urlpath)
             } else if !urlbase.ends_with('/') && !urlpath.starts_with('/') {
@@ -83,7 +72,6 @@ impl TransportTrait for FakeEncryptedLogin {
                 format!("{}{}", urlbase, urlpath)
             };
 
-            
             let builder = reqwest::blocking::Client::new()
                 .post(&full_url)
                 .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36")

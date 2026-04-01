@@ -298,6 +298,102 @@ impl Drop for WebServer {
     }
 }
 
+#[macro_export]
+#[doc(hidden)]
+macro_rules! __register_method {
+    (get)    => { actix_web::web::get()    };
+    (post)   => { actix_web::web::post()   };
+    (put)    => { actix_web::web::put()    };
+    (delete) => { actix_web::web::delete() };
+    (patch)  => { actix_web::web::patch()  };
+    (head)   => { actix_web::web::head()   };
+}
+
+// ── 主宏 ────────────────────────────────────────────────────────────────────
+
+/// 声明式路由 & 共享数据注册
+///
+/// ```ignore
+/// register!(server {
+///     get    "/health" => health,
+///     post   "/users"  => create_user,
+///     put    "/users"  => update_user,
+///     delete "/users"  => delete_user,
+///
+///     data web::Data::new(db_pool.clone()),
+///     data web::Data::new(app_state.clone()),
+/// });
+/// ```
+#[macro_export]
+macro_rules! register {
+    // ── 入口 ──────────────────────────────────────────────
+    ($server:ident { $($body:tt)* }) => {
+        $crate::register!(@arm $server [] [] $($body)*)
+    };
+
+    // ── data（带尾逗号） ──────────────────────────────────
+    (@arm $server:ident [ $($routes:expr),* ] [ $($data:expr),* ]
+        data $d:expr, $($rest:tt)*
+    ) => {
+        $crate::register!(@arm $server
+            [ $($routes),* ]
+            [ $($data,)* $d ]
+            $($rest)*
+        )
+    };
+
+    // ── data（末项，无尾逗号） ────────────────────────────
+    (@arm $server:ident [ $($routes:expr),* ] [ $($data:expr),* ]
+        data $d:expr
+    ) => {
+        $crate::register!(@arm $server
+            [ $($routes),* ]
+            [ $($data,)* $d ]
+        )
+    };
+
+    // ── route（带尾逗号） ─────────────────────────────────
+    //    $method:ident 匹配 get / post / put / delete / …
+    //    必须排在 data 分支之后，否则 `data` 也会被 $method 吞掉
+    (@arm $server:ident [ $($routes:expr),* ] [ $($data:expr),* ]
+        $method:ident $path:literal => $handler:expr, $($rest:tt)*
+    ) => {
+        $crate::register!(@arm $server [
+            $($routes,)*
+            $crate::web::base::RouteConfig::new(|cfg| {
+                cfg.route(
+                    $path,
+                    $crate::__register_method!($method).to($handler),
+                );
+            })
+        ] [ $($data),* ] $($rest)*)
+    };
+
+    // ── route（末项，无尾逗号） ───────────────────────────
+    (@arm $server:ident [ $($routes:expr),* ] [ $($data:expr),* ]
+        $method:ident $path:literal => $handler:expr
+    ) => {
+        $crate::register!(@arm $server [
+            $($routes,)*
+            $crate::web::base::RouteConfig::new(|cfg| {
+                cfg.route(
+                    $path,
+                    $crate::__register_method!($method).to($handler),
+                );
+            })
+        ] [ $($data),* ])
+    };
+
+    // ── 递归终止：执行注册 ────────────────────────────────
+    (@arm $server:ident [ $($routes:expr),* ] [ $($data:expr),* ]) => {{
+        // 先注入共享状态
+        $( $server.with_app_data($data); )*
+        // 再批量注册路由
+        $server.register_routes(vec![ $($routes),* ]);
+    }};
+}
+
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -562,4 +658,348 @@ mod tests {
 
         server.stop();
     }
+
+    #[test]
+    fn test_register_macro() {
+        async fn health() -> impl Responder { HttpResponse::Ok().body("ok") }
+        async fn create_user() -> impl Responder { HttpResponse::Ok().body("user created") }
+
+        let shared = Data::new("shared-state".to_string());
+
+        let mut server = WebServer::new(0);
+        crate::register!(server {
+        get  "/health" => health,
+        post "/users"  => create_user,
+
+        data shared.clone(),
+    });
+
+        let port = server.start().unwrap();
+        let client = Client::new();
+
+        let r = client.get(format!("http://127.0.0.1:{}/health", port))
+            .send().unwrap().text().unwrap();
+        assert_eq!(r, "ok");
+
+        let r = client.post(format!("http://127.0.0.1:{}/users", port))
+            .send().unwrap().text().unwrap();
+        assert_eq!(r, "user created");
+
+        server.stop();
+    }
+    #[test]
+    fn test_sqlite_in_memory() {
+        use rusqlite::Connection;
+        use std::sync::Mutex;
+
+        // ── 建库建表，预插两条数据 ────────────────────
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute(
+            "CREATE TABLE notes (
+             id      INTEGER PRIMARY KEY AUTOINCREMENT,
+             content TEXT NOT NULL
+         )",
+            [],
+        )
+            .unwrap();
+        conn.execute("INSERT INTO notes (content) VALUES (?1)", ["hello"]).unwrap();
+        conn.execute("INSERT INTO notes (content) VALUES (?1)", ["world"]).unwrap();
+
+        let db = Data::new(Mutex::new(conn));
+
+        // ── handlers ─────────────────────────────────
+        async fn list_notes(db: web::Data<Mutex<Connection>>) -> impl Responder {
+            let conn = db.lock().unwrap();
+            let mut stmt = conn
+                .prepare("SELECT id, content FROM notes ORDER BY id")
+                .unwrap();
+            let notes: Vec<String> = stmt
+                .query_map([], |row| {
+                    let id: i64 = row.get(0)?;
+                    let content: String = row.get(1)?;
+                    Ok(format!("{}:{}", id, content))
+                })
+                .unwrap()
+                .filter_map(|r| r.ok())
+                .collect();
+            HttpResponse::Ok().body(notes.join(","))
+        }
+
+        async fn add_note(
+            db: web::Data<Mutex<Connection>>,
+            body: String,
+        ) -> impl Responder {
+            let conn = db.lock().unwrap();
+            conn.execute("INSERT INTO notes (content) VALUES (?1)", [&body])
+                .unwrap();
+            HttpResponse::Created().body(format!("{}", conn.last_insert_rowid()))
+        }
+
+        // ── 组装服务器 ───────────────────────────────
+        let mut server = WebServer::new(0);
+        server
+            .with_app_data(db)
+            .register_routes(vec![RouteConfig::new(|cfg| {
+                cfg.route("/notes", web::get().to(list_notes));
+                cfg.route("/notes", web::post().to(add_note));
+            })]);
+
+        let port = server.start().unwrap();
+        let client = Client::new();
+        let base = format!("http://127.0.0.1:{}", port);
+
+        // ── 验证预置数据 ────────────────────────────
+        let resp = client
+            .get(format!("{}/notes", base))
+            .send()
+            .unwrap()
+            .text()
+            .unwrap();
+        assert_eq!(resp, "1:hello,2:world");
+
+        // ── 插入新记录 ──────────────────────────────
+        let resp = client
+            .post(format!("{}/notes", base))
+            .body("rust")
+            .send()
+            .unwrap()
+            .text()
+            .unwrap();
+        assert_eq!(resp, "3"); // 自增 id
+
+        // ── 再次查询，确认持久化 ────────────────────
+        let resp = client
+            .get(format!("{}/notes", base))
+            .send()
+            .unwrap()
+            .text()
+            .unwrap();
+        assert_eq!(resp, "1:hello,2:world,3:rust");
+
+        server.stop();
+    }
+
+    #[test]
+    fn test_sqlite_in_memory_and_register_macro() {
+        use rusqlite::Connection;
+        use std::sync::Mutex;
+
+        // ── 建库建表，预插数据 ────────────────────────
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute(
+            "CREATE TABLE users (
+             id    INTEGER PRIMARY KEY AUTOINCREMENT,
+             name  TEXT NOT NULL,
+             email TEXT NOT NULL
+         )",
+            [],
+        )
+            .unwrap();
+        conn.execute(
+            "INSERT INTO users (name, email) VALUES (?1, ?2)",
+            ["Alice", "alice@example.com"],
+        )
+            .unwrap();
+        conn.execute(
+            "INSERT INTO users (name, email) VALUES (?1, ?2)",
+            ["Bob", "bob@example.com"],
+        )
+            .unwrap();
+
+        let db = Data::new(Mutex::new(conn));
+
+        // ── handlers ─────────────────────────────────
+        async fn list_users(db: web::Data<Mutex<Connection>>) -> impl Responder {
+            let conn = db.lock().unwrap();
+            let mut stmt = conn
+                .prepare("SELECT id, name, email FROM users ORDER BY id")
+                .unwrap();
+            let users: Vec<String> = stmt
+                .query_map([], |row| {
+                    let id: i64 = row.get(0)?;
+                    let name: String = row.get(1)?;
+                    let email: String = row.get(2)?;
+                    Ok(format!("{}:{}:{}", id, name, email))
+                })
+                .unwrap()
+                .filter_map(|r| r.ok())
+                .collect();
+            HttpResponse::Ok().body(users.join(";"))
+        }
+
+        async fn get_user(
+            db: web::Data<Mutex<Connection>>,
+            path: web::Path<i64>,
+        ) -> impl Responder {
+            let id = path.into_inner();
+            let conn = db.lock().unwrap();
+            let result = conn.query_row(
+                "SELECT id, name, email FROM users WHERE id = ?1",
+                [id],
+                |row| {
+                    let id: i64 = row.get(0)?;
+                    let name: String = row.get(1)?;
+                    let email: String = row.get(2)?;
+                    Ok(format!("{}:{}:{}", id, name, email))
+                },
+            );
+            match result {
+                Ok(user) => HttpResponse::Ok().body(user),
+                Err(_) => HttpResponse::NotFound().body("not found"),
+            }
+        }
+
+        async fn create_user(
+            db: web::Data<Mutex<Connection>>,
+            body: String,
+        ) -> impl Responder {
+            // 简单解析: "name,email"
+            let parts: Vec<&str> = body.split(',').collect();
+            if parts.len() != 2 {
+                return HttpResponse::BadRequest().body("invalid format");
+            }
+            let conn = db.lock().unwrap();
+            conn.execute(
+                "INSERT INTO users (name, email) VALUES (?1, ?2)",
+                [parts[0], parts[1]],
+            )
+                .unwrap();
+            HttpResponse::Created().body(format!("{}", conn.last_insert_rowid()))
+        }
+
+        async fn delete_user(
+            db: web::Data<Mutex<Connection>>,
+            path: web::Path<i64>,
+        ) -> impl Responder {
+            let id = path.into_inner();
+            let conn = db.lock().unwrap();
+            let affected = conn
+                .execute("DELETE FROM users WHERE id = ?1", [id])
+                .unwrap();
+            if affected > 0 {
+                HttpResponse::Ok().body("deleted")
+            } else {
+                HttpResponse::NotFound().body("not found")
+            }
+        }
+
+        async fn health() -> impl Responder {
+            HttpResponse::Ok().body("healthy")
+        }
+
+        async fn app_info(config: web::Data<String>) -> impl Responder {
+            HttpResponse::Ok().body(config.get_ref().clone())
+        }
+
+        // ── 额外共享状态 ─────────────────────────────
+        let app_config = Data::new("app-v1.0".to_string());
+
+        // ── 使用 register! 宏组装服务器 ──────────────
+        let mut server = WebServer::new(0);
+        crate::register!(server {
+        get    "/health"      => health,
+        get    "/info"        => app_info,
+        get    "/users"       => list_users,
+        get    "/users/{id}"  => get_user,
+        post   "/users"       => create_user,
+        delete "/users/{id}"  => delete_user,
+
+        data db.clone(),
+        data app_config.clone(),
+    });
+
+        let port = server.start().unwrap();
+        let client = Client::new();
+        let base = format!("http://127.0.0.1:{}", port);
+
+        // ── 1. 健康检查 ─────────────────────────────
+        let resp = client
+            .get(format!("{}/health", base))
+            .send()
+            .unwrap()
+            .text()
+            .unwrap();
+        assert_eq!(resp, "healthy");
+
+        // ── 2. 应用信息（验证多 Data 注入）──────────
+        let resp = client
+            .get(format!("{}/info", base))
+            .send()
+            .unwrap()
+            .text()
+            .unwrap();
+        assert_eq!(resp, "app-v1.0");
+
+        // ── 3. 查询预置用户 ─────────────────────────
+        let resp = client
+            .get(format!("{}/users", base))
+            .send()
+            .unwrap()
+            .text()
+            .unwrap();
+        assert_eq!(resp, "1:Alice:alice@example.com;2:Bob:bob@example.com");
+
+        // ── 4. 获取单个用户 ─────────────────────────
+        let resp = client
+            .get(format!("{}/users/1", base))
+            .send()
+            .unwrap()
+            .text()
+            .unwrap();
+        assert_eq!(resp, "1:Alice:alice@example.com");
+
+        let resp = client
+            .get(format!("{}/users/999", base))
+            .send()
+            .unwrap();
+        assert_eq!(resp.status(), 404);
+
+        // ── 5. 创建新用户 ───────────────────────────
+        let resp = client
+            .post(format!("{}/users", base))
+            .body("Charlie,charlie@example.com")
+            .send()
+            .unwrap()
+            .text()
+            .unwrap();
+        assert_eq!(resp, "3");
+
+        // ── 6. 验证新用户已入库 ─────────────────────
+        let resp = client
+            .get(format!("{}/users", base))
+            .send()
+            .unwrap()
+            .text()
+            .unwrap();
+        assert!(resp.contains("3:Charlie:charlie@example.com"));
+
+        // ── 7. 删除用户 ─────────────────────────────
+        let resp = client
+            .delete(format!("{}/users/2", base))
+            .send()
+            .unwrap()
+            .text()
+            .unwrap();
+        assert_eq!(resp, "deleted");
+
+        // ── 8. 确认删除生效 ─────────────────────────
+        let resp = client
+            .get(format!("{}/users", base))
+            .send()
+            .unwrap()
+            .text()
+            .unwrap();
+        assert!(!resp.contains("Bob"));
+        assert_eq!(resp, "1:Alice:alice@example.com;3:Charlie:charlie@example.com");
+
+        // ── 9. 删除不存在的用户 ─────────────────────
+        let resp = client
+            .delete(format!("{}/users/999", base))
+            .send()
+            .unwrap();
+        assert_eq!(resp.status(), 404);
+
+        server.stop();
+    }
+
 }
