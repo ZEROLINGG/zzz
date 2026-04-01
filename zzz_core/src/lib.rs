@@ -3,6 +3,7 @@ pub mod utils;
 pub mod binary_data_process;
 pub mod shell;
 pub mod transport;
+mod web;
 
 pub fn add(left: u64, right: u64) -> u64 {
     left + right

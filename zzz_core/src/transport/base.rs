@@ -1,8 +1,11 @@
-//src/transport/base.rs
+//zzz_core/src/transport/base.rs
 use actix_web::{web, HttpRequest, HttpResponse};
-use reqwest::blocking::{RequestBuilder, Response};
-use async_trait::async_trait;
+use reqwest::blocking::{RequestBuilder};
 
+
+
+// 注意TransportTrait只关心数据隐写传输，TransportTrait只接受已加密后的Vec<u8>
+// 数据加密请在TransportTrait外实现
 pub trait TransportTrait{
     // 此处定义三个角色x,y,z
     // x 该c2系统的实际服务端
@@ -35,7 +38,6 @@ pub enum TransportHttpType{
     // RequestBuilder(RequestBuilder),
 }
 // 在发送的请求里面藏载荷
-#[async_trait]
 pub trait TransportHttpA: TransportTrait<
     ExtractIn = TransportHttpType,
     InjectIn = TransportHttpType,
@@ -44,7 +46,6 @@ pub trait TransportHttpA: TransportTrait<
     const PROCESS: &'static str = "a";
 }
 // 在收到的响应里面藏载荷
-#[async_trait]
 pub trait TransportHttpB: TransportTrait<
     ExtractIn = TransportHttpType,
     InjectIn = TransportHttpType,

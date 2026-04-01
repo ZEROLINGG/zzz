@@ -1,2 +1,2 @@
 pub mod base;
-mod implementation;
+pub(crate) mod implementation;
