@@ -683,6 +683,7 @@ fn collect_running_processes() -> Option<String> {
 // ════════════════════════════════════════════════
 
 /// 解析 `wmic ... /value` 格式：`Key=Value\r\n`
+#[cfg(windows)]
 fn parse_wmic_value(output: &str, key: &str) -> Option<String> {
     output
         .lines()
