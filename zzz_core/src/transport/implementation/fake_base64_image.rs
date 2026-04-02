@@ -1,15 +1,23 @@
 //zzz_core/src/transport/implementation/fake_base64_image.rs
+#![allow(dead_code)]
+use std::fmt::Write;
 use crate::binary_data_process::z_base::{Base64, Encoder as _};
 use crate::transport::base::{TransportHttpB, TransportHttpType, TransportTrait};
 use actix_web::HttpResponse;
+use obfstr::obfstr;
 use once_cell::sync::Lazy;
 use regex::Regex;
 
-const HTML: &'static str = include_str!("./百度文心助手 - 办公学习一站解决.payload.html");
-const PNG_BASE64_PREFIX: &'static str = "iVBORw0KGgoAAAANSUhEUgAABDMAAAUbCAYAAA";
-static RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r#"display: none;background: url\("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAABDMAAAUbCAYAAA([^"\s]+)"\)"#)
-        .unwrap()
+static HTML: Lazy<String> = Lazy::new(|| {
+    format!("{}",obfstr!(include_str!("./百度文心助手 - 办公学习一站解决.payload.html")))
+});
+
+static PNG_BASE64_PREFIX: Lazy<String> = Lazy::new(|| {
+    format!("{}",obfstr!("iVBORw0KGgoAAAANSUhEUgAABDMAAAUbCAYAAA"))
+});static RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(obfstr!(
+        r#"display: none;background: url\("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAABDMAAAUbCAYAAA([^"\s]+)"\)"#
+    )).unwrap()
 });
 
 pub struct FakeBase64Image;
@@ -35,15 +43,19 @@ impl TransportTrait for FakeBase64Image {
 
     fn inject(input: Self::InjectIn) -> Option<Self::InjectOut> {
         if let TransportHttpType::Payload(bytes) = input {
-            let html = format!(
-                "{}\n{}",
-                HTML,
-                format!(
-                    r#"<style>body script {{display: none;background: url("data:image/png;base64,{}{}");}}</style>"#,
-                    PNG_BASE64_PREFIX,
-                    Base64::encode(bytes)
-                )
-            );
+            let mut html = HTML.clone();
+            write!(
+                &mut html,
+                "{}{}{}",
+                obfstr!("\n<style>body script {{display: none;background: url(\"data:image/png;base64,"),
+                *PNG_BASE64_PREFIX,
+                Base64::encode(bytes),
+            ).unwrap();
+            write!(
+                &mut html,
+                "{}",
+                obfstr!("\");}}</style>")
+            ).unwrap();
             return Some(TransportHttpType::HttpResponse(
                 HttpResponse::Ok()
                     .content_type("text/html; charset=utf-8")
@@ -57,12 +69,11 @@ impl TransportTrait for FakeBase64Image {
 impl TransportHttpB for FakeBase64Image {}
 
 #[cfg(test)]
-pub(crate) mod tests {
+mod tests {
     use super::*;
-    use crate::web::base::{RouteConfig, WebServer};
-    use actix_web::web;
+    use crate::web::base::{WebServer};
     use reqwest::blocking::Client;
-    use crate::register;
+    use crate::web_register;
 
     type HTTP = TransportHttpType;
 
@@ -74,14 +85,14 @@ pub(crate) mod tests {
         {
             return resp;
         }
-        HttpResponse::Ok().body(HTML)
+        HttpResponse::Ok().body(&**HTML)
     }
 
     #[test]
     fn test() {
         let mut server = WebServer::new(0);
 
-        register!(server {
+        web_register!(server {
             get "/greet" => greet,
         });
 
