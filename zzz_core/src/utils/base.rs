@@ -31,15 +31,3 @@ pub fn format_timestamp() -> String {
     Local::now().format("%Y-%m-%d-%H-%M-%S").to_string()
 }
 
-pub fn join_url(base: &str, path: &str) -> String {
-    let base = base.trim_end_matches('/');
-    let path = path.trim_start_matches('/');
-
-    if base.is_empty() {
-        return format!("/{}", path);
-    }
-    if path.is_empty() {
-        return base.to_string();
-    }
-    format!("{}/{}", base, path)
-}
