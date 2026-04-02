@@ -7,7 +7,7 @@ use regex::Regex;
 use serde_json::json;
 use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
-
+use crate::utils::base::join_url;
 
 static RE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r#""pwd"\s*:\s*"([A-Za-z0-9+/=]+)""#).unwrap()
@@ -18,6 +18,7 @@ pub struct FakeEncryptedLogin;
 impl TransportTrait for FakeEncryptedLogin {
     const SUPPORT: &'static str = "zy:yz";
     const PROCESS: &'static str = "a";
+    const MAX_PAYLOAD_SIZE: usize = 1024;
 
     type ExtractIn = TransportHttpType;
     type InjectIn = TransportHttpType;
@@ -63,13 +64,7 @@ impl TransportTrait for FakeEncryptedLogin {
                 "app_id": "com.example.enterprise"
             });
 
-            let full_url = if urlbase.ends_with('/') && urlpath.starts_with('/') {
-                format!("{}{}", urlbase.trim_end_matches('/'), urlpath)
-            } else if !urlbase.ends_with('/') && !urlpath.starts_with('/') {
-                format!("{}/{}", urlbase, urlpath)
-            } else {
-                format!("{}{}", urlbase, urlpath)
-            };
+            let full_url = join_url(&urlbase, &urlpath);
 
             let builder = reqwest::blocking::Client::new()
                 .post(&full_url)

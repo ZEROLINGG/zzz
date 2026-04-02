@@ -9,7 +9,7 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 
 static HTML: Lazy<String> = Lazy::new(|| {
-    format!("{}",obfstr!(include_str!("./百度文心助手 - 办公学习一站解决.payload.html")))
+    format!("{}",obfstr!(include_str!("./fake_base64_image.1.html")))
 });
 
 static PNG_BASE64_PREFIX: Lazy<String> = Lazy::new(|| {
@@ -24,6 +24,7 @@ pub struct FakeBase64Image;
 impl TransportTrait for FakeBase64Image {
     const SUPPORT: &'static str = "zy:yz";
     const PROCESS: &'static str = "b";
+    const MAX_PAYLOAD_SIZE: usize = 128 * 1024;
     type ExtractIn = TransportHttpType;
     type InjectIn = TransportHttpType;
     type InjectOut = TransportHttpType;
