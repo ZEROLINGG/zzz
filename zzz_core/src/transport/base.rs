@@ -15,6 +15,7 @@ pub trait TransportTrait{
 
     const SUPPORT: &'static str; // 按谁发出的请求分，如“zy”,"yz","zy:yz"
     const PROCESS: &'static str; // 如“a”，“b”
+    const MAX_PAYLOAD_SIZE: usize;
     type ExtractIn;
     type InjectIn;
     type InjectOut;
