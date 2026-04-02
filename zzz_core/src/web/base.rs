@@ -1,5 +1,5 @@
 //zzz_core/src/web/base.rs
-
+#![allow(dead_code)]
 use actix_web::rt::Runtime;
 use actix_web::web::{self, Data};
 use actix_web::{App, HttpServer};
@@ -325,17 +325,17 @@ macro_rules! __register_method {
 /// });
 /// ```
 #[macro_export]
-macro_rules! register {
+macro_rules! web_register {
     // ── 入口 ──────────────────────────────────────────────
     ($server:ident { $($body:tt)* }) => {
-        $crate::register!(@arm $server [] [] $($body)*)
+        $crate::web_register!(@arm $server [] [] $($body)*)
     };
 
     // ── data（带尾逗号） ──────────────────────────────────
     (@arm $server:ident [ $($routes:expr),* ] [ $($data:expr),* ]
         data $d:expr, $($rest:tt)*
     ) => {
-        $crate::register!(@arm $server
+        $crate::web_register!(@arm $server
             [ $($routes),* ]
             [ $($data,)* $d ]
             $($rest)*
@@ -346,7 +346,7 @@ macro_rules! register {
     (@arm $server:ident [ $($routes:expr),* ] [ $($data:expr),* ]
         data $d:expr
     ) => {
-        $crate::register!(@arm $server
+        $crate::web_register!(@arm $server
             [ $($routes),* ]
             [ $($data,)* $d ]
         )
@@ -358,7 +358,7 @@ macro_rules! register {
     (@arm $server:ident [ $($routes:expr),* ] [ $($data:expr),* ]
         $method:ident $path:literal => $handler:expr, $($rest:tt)*
     ) => {
-        $crate::register!(@arm $server [
+        $crate::web_register!(@arm $server [
             $($routes,)*
             $crate::web::base::RouteConfig::new(|cfg| {
                 cfg.route(
@@ -373,7 +373,7 @@ macro_rules! register {
     (@arm $server:ident [ $($routes:expr),* ] [ $($data:expr),* ]
         $method:ident $path:literal => $handler:expr
     ) => {
-        $crate::register!(@arm $server [
+        $crate::web_register!(@arm $server [
             $($routes,)*
             $crate::web::base::RouteConfig::new(|cfg| {
                 cfg.route(
@@ -582,7 +582,10 @@ mod tests {
         // 构造一个 panic handler
         async fn crash() -> impl Responder {
             panic!("intentional crash");
-            HttpResponse::InternalServerError()
+            #[allow(unreachable_code)]
+            {
+                HttpResponse::InternalServerError()
+            }
         }
 
         server.register_routes(vec![
@@ -667,7 +670,7 @@ mod tests {
         let shared = Data::new("shared-state".to_string());
 
         let mut server = WebServer::new(0);
-        crate::register!(server {
+        crate::web_register!(server {
         get  "/health" => health,
         post "/users"  => create_user,
 
@@ -896,7 +899,7 @@ mod tests {
 
         // ── 使用 register! 宏组装服务器 ──────────────
         let mut server = WebServer::new(0);
-        crate::register!(server {
+        crate::web_register!(server {
         get    "/health"      => health,
         get    "/info"        => app_info,
         get    "/users"       => list_users,
