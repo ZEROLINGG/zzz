@@ -25,6 +25,3 @@ dist-ssr
 *.sln
 *.sw?
 
-
-**/github_page.html
-**/**.payload.html
