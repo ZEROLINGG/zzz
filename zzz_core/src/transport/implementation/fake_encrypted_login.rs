@@ -1,13 +1,12 @@
 // zzz_core/src/transport/implementation/fake_encrypted_login.rs
-
-use actix_web::{web, HttpRequest, HttpResponse};
-use serde_json::json;
-use uuid::Uuid;
-use std::time::{SystemTime, UNIX_EPOCH};
+#![allow(dead_code)]
 use crate::binary_data_process::z_base::{Base64, Encoder as _};
-use crate::transport::base::{TransportHttpType, TransportTrait, TransportHttpA};
+use crate::transport::base::{TransportHttpA, TransportHttpType, TransportTrait};
 use once_cell::sync::Lazy;
 use regex::Regex;
+use serde_json::json;
+use std::time::{SystemTime, UNIX_EPOCH};
+use uuid::Uuid;
 
 
 static RE: Lazy<Regex> = Lazy::new(|| {
@@ -92,12 +91,12 @@ impl TransportTrait for FakeEncryptedLogin {
 impl TransportHttpA for FakeEncryptedLogin {}
 
 #[cfg(test)]
-pub(crate) mod tests {
+pub mod tests {
     use super::*;
-    use actix_web::web;
-    use reqwest::blocking::Client;
-    use crate::web::base::{WebServer, RouteConfig};
     use crate::transport::base::TransportHttpType as HTTP;
+    use crate::web::base::WebServer;
+    // RouteConfig
+    use actix_web::{web, HttpRequest, HttpResponse};
 
     const TEST_DATA: &[u8; 62] = b"f8d1763a-a376-40e9-9b1f8d1763a-a376-40e9-9b1e-40e5e0e5e917d96d";
 
@@ -118,11 +117,15 @@ pub(crate) mod tests {
     fn test_fake_encrypted_login_roundtrip() {
         let mut server = WebServer::new(0);  // 0 表示随机端口
 
-        server.register_routes(vec![
-            RouteConfig::new(|cfg| {
-                cfg.route("/api/v2/auth/login", web::post().to(login_handler));
-            }),
-        ]);
+        // server.register_routes(vec![
+        //     RouteConfig::new(|cfg| {
+        //         cfg.route("/api/v2/auth/login", web::post().to(login_handler));
+        //     }),
+        // ]);
+        crate::web_register!(server{
+            post "/api/v2/auth/login" => login_handler,
+        });
+
 
         let port = server.start().unwrap();
         let base_url = format!("http://127.0.0.1:{}", port);

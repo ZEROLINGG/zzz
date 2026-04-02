@@ -3,7 +3,6 @@ use sha1::{Sha1, Digest as Sha1Digest};
 use sha2::{Sha256, Digest as Sha2Digest};
 use chrono::Local;
 use std::time::{SystemTime, UNIX_EPOCH};
-use uuid::uuid;
 
 pub fn uuid() -> String {
     uuid::Uuid::new_v4().to_string().replace('-', "").to_uppercase()

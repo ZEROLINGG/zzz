@@ -1,4 +1,4 @@
-// src/model/base.rs
+// zzz_core/src/model/base.rs
 use serde::{Serialize, Deserialize};
 
 

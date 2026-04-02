@@ -28,12 +28,13 @@ reqwest = { version = "0.13.2", features = ["blocking", "json"] }
 once_cell = "1.21.4"
 regex = "1.12.3"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "time"] }
-uuid = { version = "1.23.0", features = ["v4"] }
 rusqlite = "0.39.0"
+uuid = { version = "1.23.0", features = ["v4"] }
+crc32fast = "1.5.0"
 
 
-[TARGET.'cfg(windows)'.dependencies]
-winreg       = "0.52"
+[target.'cfg(windows)'.dependencies]
+winreg       = "0.56.0"
 windows-sys  = { version = "0.61.2", features = [
     "Win32_Globalization",   # MultiByteToWideChar, CP_ACP
 ] }
